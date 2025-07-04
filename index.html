@@ -4,10 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>C42 Flight Buddy v2.0</title>
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -32,19 +29,15 @@
       --highlight-bg: #334455;
     }
     input, select, button {
-      padding: 10px;
-      margin: 5px 0 15px 0;
-      width: 100%;
-      font-size: 1rem;
+      padding: 10px; margin: 5px 0 15px 0;
+      width: 100%; font-size: 1rem;
       background: var(--highlight-bg);
       border: 1px solid #ccc;
       border-radius: 3px;
       color: var(--fg);
     }
     #themeToggle {
-      width: auto;
-      cursor: pointer;
-      font-weight: bold;
+      width: auto; cursor: pointer; font-weight: bold;
     }
     label { font-weight: bold; }
     #results {
@@ -87,12 +80,9 @@
   <input type="number" id="duration" min="0.5" step="0.5" value="1" />
 
   <div id="results">Enter flight details to see results.</div>
-
   <div id="map"></div>
 
-  <footer>
-    &copy; 2025 Richard Ball. All rights reserved.
-  </footer>
+  <footer>&copy; 2025 Richard Ball. All rights reserved.</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -109,35 +99,26 @@
     });
     if (localStorage.getItem('dark') === 'true') body.classList.add('dark');
 
-    function estimateDewPoint(t, h) {
-      return t - ((100 - h) / 5);
-    }
-    function estimateCloudBase(t, dp) {
-      return Math.round((t - dp) * 400);
-    }
+    function estimateDewPoint(t, h) { return t - ((100 - h) / 5); }
+    function estimateCloudBase(t, dp) { return Math.round((t - dp) * 400); }
     function predictRunway(dir) {
       const r = { '04':40,'10':100,'22':220,'28':280 };
-      return Object.entries(r).reduce((a,b)=> {
+      return Object.entries(r).reduce((a,b)=>{
         const da = Math.min(Math.abs(a[1]-dir),360-Math.abs(a[1]-dir));
         const db = Math.min(Math.abs(b[1]-dir),360-Math.abs(b[1]-dir));
-        return da<db ? a : b;
+        return da < db ? a : b;
       })[0];
     }
     function windComponents(wd, ws, rd) {
       const w = wd * Math.PI/180, r = rd * Math.PI/180;
-      const cross = Math.abs(ws * Math.sin(w-r));
-      const head = ws * Math.cos(w-r);
+      const cross = Math.abs(ws * Math.sin(w - r));
+      const head = ws * Math.cos(w - r);
       return { cross: +cross.toFixed(1), head: +head.toFixed(1) };
     }
-    function ceilingCat(cb) {
-      return cb<500 ? 'IFR' : cb<1000 ? 'MVFR' : 'VFR';
-    }
-    function visCat(v) {
-      return v<1600? 'IFR' : v<5000 ? 'MVFR': 'VFR';
-    }
+    function ceilingCat(cb) { return cb < 500 ? 'IFR' : cb < 1000 ? 'MVFR' : 'VFR'; }
+    function visCat(v) { return v < 1600 ? 'IFR' : v < 5000 ? 'MVFR' : 'VFR'; }
     function formatDT(d) {
-      const dd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-      const mm = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const dd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], mm = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       return `${dd[d.getUTCDay()]}, ${String(d.getUTCDate()).padStart(2,'0')} ${mm[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${String(d.getUTCHours()).padStart(2,'00')}:${String(d.getUTCMinutes()).padStart(2,'00')} GMT`;
     }
     async function getSun(date) {
@@ -154,11 +135,14 @@
 
     const map = L.map('map').setView([LAT, LON], 10);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
+    let cloudLayer, rainLayer, windLayer;
     function addLayers() {
-      L.tileLayer(`https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${OWM_KEY}`,{opacity:0.4}).addTo(map);
-      L.tileLayer(`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${OWM_KEY}`,{opacity:0.4}).addTo(map);
-      L.tileLayer(`https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${OWM_KEY}`,{opacity:0.4}).addTo(map);
+      if (cloudLayer) map.removeLayer(cloudLayer);
+      cloudLayer = L.tileLayer(`https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${OWM_KEY}`,{opacity:0.4}).addTo(map);
+      if (rainLayer) map.removeLayer(rainLayer);
+      rainLayer = L.tileLayer(`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${OWM_KEY}`,{opacity:0.4}).addTo(map);
+      if (windLayer) map.removeLayer(windLayer);
+      windLayer = L.tileLayer(`https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${OWM_KEY}`,{opacity:0.4}).addTo(map);
     }
 
     async function checkFlight() {
@@ -167,64 +151,51 @@
       const out = document.getElementById('results');
       out.textContent = '';
 
-      if (!s || isNaN(d) || d<=0) {
-        out.innerHTML = '<span class="bad">Enter valid time & duration</span>';
-        return;
-      }
-      const st = new Date(s);
-      const now = new Date();
-      const max = new Date(now.getTime()+5*24*3600*1000);
-      const et = new Date(st.getTime()+d*3600*1000);
-      if (st<=now||et>max) {
-        out.innerHTML = '<span class="bad">Time must be within next 5 days</span>';
-        return;
-      }
-
-      out.innerHTML = 'Loading…';
+      if (!s || isNaN(d) || d <= 0) { out.innerHTML = '<span class="bad">Enter valid time & duration</span>'; return; }
+      const st = new Date(s), now = new Date(), max = new Date(now.getTime() + 5*24*3600*1000), et = new Date(st.getTime() + d*3600*1000);
+      if (st <= now || et > max) { out.innerHTML = '<span class="bad">Time must be within next 5 days</span>'; return; }
+      
+      out.textContent = 'Loading…';
       try {
-        const [fct, avwx, sun] = await Promise.all([
+        const [fc, avwx, sun] = await Promise.all([
           fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${LAT}&lon=${LON}&appid=${OWM_KEY}&units=metric`).then(r=>r.json()),
           getAVWX(),
           getSun(st)
         ]);
-
         let prev = null;
-        for (let i=fct.list.length-1;i>=0;i--) {
-          const t = new Date(fct.list[i].dt*1000);
-          if (t<=st) { prev=fct.list[i]; break; }
+        for (let i = fc.list.length-1; i >= 0; i--) {
+          const t = new Date(fc.list[i].dt * 1000);
+          if (t <= st) { prev = fc.list[i]; break; }
         }
-        if (!prev) prev = fct.list.find(i=>new Date(i.dt*1000)>st);
-        if (!prev) throw 'No forecast';
+        if (!prev) prev = fc.list.find(i=>new Date(i.dt*1000) > st);
+        if (!prev) throw 'No valid forecast';
 
-        const req = [prev,...fct.list.filter(i=>{
-          const t=new Date(i.dt*1000);
-          return t>new Date(prev.dt*1000)&&t<et;
+        const entries = [prev, ...fc.list.filter(i => {
+          const t = new Date(i.dt * 1000);
+          return t > new Date(prev.dt * 1000) && t < et;
         })];
-
+        
         out.innerHTML = '';
-        for (const it of req) {
-          const t = new Date(it.dt*1000);
-          const m = it.main, w = it.wind, c = it.clouds, wd = it.weather[0];
-          const dp = estimateDewPoint(m.temp, m.humidity);
-          const cb = estimateCloudBase(m.temp, dp);
-          const rw = predictRunway(w.deg||0);
-          const rd = parseInt(rw)*10;
-          const wc = windComponents(w.deg||0, w.speed||0, rd);
-          const cc = ceilingCat(cb);
-          const vc = visCat(10000);
-          const safe = !(w.speed>20||w.gust>20||10000<5000||cb<1000||wc.cross>C42_MAX_CROSSWIND);
+        entries.forEach(it => {
+          const t = new Date(it.dt * 1000), m = it.main, w = it.wind, c = it.clouds, wd = it.weather[0];
+          const dp = estimateDewPoint(m.temp, m.humidity), cb = estimateCloudBase(m.temp, dp);
+          const rw = predictRunway(w.deg || 0), rd = parseInt(rw)*10;
+          const wc = windComponents(w.deg || 0, w.speed || 0, rd);
+          const cc = ceilingCat(cb), vc = visCat(10000);
+          const safe = w.speed <= 20 && (w.gust||0) <= 20 && cb >= 1000 && wc.cross <= C42_MAX_CROSSWIND;
+          
           out.innerHTML +=
-            `<strong>${formatDT(t)}</strong>\n`+
-            `Temp: ${m.temp.toFixed(1)}°C, DP: ${dp.toFixed(1)}°C\n`+
-            `Wind: ${w.speed.toFixed(1)} kt @${w.deg}°, Rwy ${rw}\n`+
-            `Head: ${wc.head} kt, Cross: <span class="${wc.cross>C42_MAX_CROSSWIND?'bad':'ok'}">${wc.cross} kt</span>\n`+
-            `Clouds: ${c.all}% (<span class="${cc}">${cc}</span>)\n`+
-            `Vis: 10000m (<span class="${vc}">${vc}</span>)\n`+
-            `${avwx.metar.raw?`METAR: ${avwx.metar.raw}\n`:''}`+
-            `${avwx.taf.raw?`TAF: ${avwx.taf.raw}\n`:''}`+
-            `Daylight: ${st<sun.rise?'Before sunrise':st>sun.set?'After sunset':'Daylight'}\n`+
-            `Flight OK: <span class="${safe?'ok':'bad'}">${safe? 'YES':'NO'}</span>\n\n`;
-        }
+            `<strong>${formatDT(t)}</strong>\n` +
+            `Temp: ${m.temp.toFixed(1)}°C, Dew Pt: ${dp.toFixed(1)}°C\n` +
+            `Wind: ${w.speed.toFixed(1)} kt @${w.deg}°, Rwy ${rw}\n` +
+            `Head: ${wc.head} kt, Cross: <span class="${wc.cross > C42_MAX_CROSSWIND ? 'bad' : 'ok'}">${wc.cross} kt</span>\n` +
+            `Clouds: ${c.all}% (<span class="${cc}">${cc}</span>)\n` +
+            `Vis: 10000m (<span class="${vc}">${vc}</span>)\n` +
+            `${avwx.metar.raw ? `METAR: ${avwx.metar.raw}\n` : ''}` +
+            `${avwx.taf.raw ? `TAF: ${avwx.taf.raw}\n` : ''}` +
+            `Daylight: ${st < sun.rise ? 'Before sunrise' : st > sun.set ? 'After sunset' : 'Daylight'}\n` +
+            `Flight OK: <span class="${safe ? 'ok' : 'bad'}">${safe ? 'YES' : 'NO'}</span>\n\n`;
+        });
 
         addLayers();
       } catch (e) {
@@ -236,7 +207,6 @@
     document.getElementById('start').addEventListener('change', checkFlight);
     document.getElementById('duration').addEventListener('input', checkFlight);
 
-    // Pre-fill start time
     const now = new Date();
     now.setMinutes(0,0,0);
     now.setHours(now.getHours()+1);
