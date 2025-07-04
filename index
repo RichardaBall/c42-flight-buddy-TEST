@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>C42 Flight Buddy v2.0</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-sA+e4ysYv+1/4+jS0G9RglMZcL6h9+DxQ1TLr8vKMtM="
+    crossorigin=""
+  />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 700px;
+      margin: auto;
+      padding: 20px;
+      background: var(--bg);
+      color: var(--fg);
+      transition: background 0.3s, color 0.3s;
+    }
+    :root {
+      --bg: #f5f5f5;
+      --fg: #333;
+      --bad: #d9534f;
+      --warn: #f0ad4e;
+      --ok: #5cb85c;
+      --highlight-bg: #eef6ff;
+    }
+    body.dark {
+      --bg: #1e1e1e;
+      --fg: #ddd;
+      --highlight-bg: #334455;
+    }
+    input, select {
+      padding: 10px;
+      margin: 5px 0 15px 0;
+      width: 100%;
+      font-size: 1rem;
+      background: var(--highlight-bg);
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      color: var(--fg);
+    }
+    label {
+      font-weight: bold;
+    }
+    #results {
+      margin-top: 20px;
+      padding: 15px;
+      background: var(--highlight-bg);
+      border-radius: 5px;
+      white-space: pre-wrap;
+      font-weight: normal;
+      min-height: 200px;
+    }
+    .bad { color: var(--bad); font-weight: bold; }
+    .warn { color: var(--warn); font-weight: bold; }
+    .ok { color: var(--ok); font-weight: bold; }
+    .highlight { font-weight: normal; }
+    #map {
+      height: 350px;
+      margin-top: 20px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    footer {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 0.9rem;
+      color: var(--fg);
+    }
+    #themeToggle {
+      cursor: pointer;
+      margin-bottom: 20px;
+      background: var(--highlight-bg);
+      border: none;
+      padding: 10px;
+      width: auto;
+      border-radius: 5px;
+      font-weight: bold;
+      color: var(--fg);
+    }
+    /* Aviation codes highlight */
+    .VFR { color: var(--ok); font-weight: bold; }
+    .MVFR { color: var(--warn); font-weight: bold; }
+    .IFR { color: var(--bad); font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>C42 Flight Buddy <small>v2.0</small></h1>
+  <button id="themeToggle">Toggle Dark Mode</button>
+  <p><em>Check flight weather at Swansea Airport (EGFH)</em></p>
+
+  <label for="start">Flight Start (GMT):</label>
+  <input type="datetime-local" id="start" />
+
+  <label for="duration">Flight Duration (hours):</label>
+  <input type="number" id="duration" min="0.5" step="0.5" value="1" />
+
+  <div id="results">Enter flight details to see results.</div>
+
+  <div id="map"></div>
+
+  <footer>
+    &copy; 2025 Richard Ball. All rights reserved.
+  </footer>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-o9N1j+kz9RMnT6pKzJtd1zBQ69Bl+g9x1trpP2EM9mA="
+    crossorigin=""
+  ></script>
+  <script>
+    const LAT = 51.605;
+    const LON = -4.064;
+    const ELEVATION = 295; // feet
+    const C42_MAX_CROSSWIND = 15; // knots max crosswind limit
+    const API_KEY = '81a0d8bef1288c6437560f89b336dd33'; // OpenWeatherMap
+    const AVWX_API_KEY = 'demo'; // Replace with your AVWX API key for METAR/TAF (https://avwx.rest)
+    
+    // Theme toggle
+    const bodyEl = document.body;
+    const themeToggle = document.getElementById('themeToggle');
+    function setTheme(dark) {
+      if (dark) bodyEl.classList.add('dark');
+      else bodyEl.classList.remove('dark');
+    }
+    themeToggle.addEventListener('click', () => {
+      const isDark = bodyEl.classList.toggle('dark');
+      localStorage.setItem('themeDark', isDark ? '1' : '0');
+    });
+    // Load saved theme
+    setTheme(localStorage.getItem('themeDark') === '1');
+
+    // Utils
+    function estimateDewPoint(temp, humidity) {
+      return temp - ((100 - humidity) / 5);
+    }
+    function estimateCloudBase(temp, dewPoint) {
+      return Math.round((temp - dewPoint) * 400);
+    }
+    function highlight(label, value, condition, cls = 'bad') {
+      if (!condition) return label + value;
+      return `${label}<span class="${cls} highlight">${value}</span>`;
+    }
+    function predictRunway(windDir) {
+      const runways = { '04': 40, '22': 220, '10': 100, '28': 280 };
+      return Object.entries(runways).reduce((a, b) => {
+        const aDiff = Math.min(Math.abs(a[1] - windDir), 360 - Math.abs(a[1] - windDir));
+        const bDiff = Math.min(Math.abs(b[1] - windDir), 360 - Math.abs(b[1] - windDir));
+        return aDiff < bDiff ? a : b;
+      })[0];
+    }
+    // Wind components (kt)
+    function windComponents(windDir, windSpeed, runwayDir) {
+      const windRad = (windDir * Math.PI) / 180;
+      const runwayRad = (runwayDir * Math.PI) / 180;
+      const angle = windRad - runwayRad;
+      const crosswind = Math.abs(windSpeed * Math.sin(angle));
+      const headwind = windSpeed * Math.cos(angle);
+      return { crosswind: +crosswind.toFixed(1), headwind: +headwind.toFixed(1) };
+    }
+    // Aviation ceiling categories by cloud base
+    function ceilingCategory(cloudBase) {
+      if (cloudBase < 500) return 'IFR';
+      if (cloudBase < 1000) return 'MVFR';
+      return 'VFR';
+    }
+    // Visibility categories (m)
+    function visibilityCategory(vis) {
+      if (vis < 1600) return 'IFR';
+      if (vis < 5000) return 'MVFR';
+      return 'VFR';
+    }
+    // Format UK date/time
+    function formatUKDate(d) {
+      const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return `${days[d.getUTCDay()]}, ${String(d.getUTCDate()).padStart(2,'0')} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')} GMT`;
+    }
+    // Check limits
+    function checkLimits(wind, gusts, vis, desc, cloudCover, cloudBase, crosswind) {
+      if (wind > 20) return { safe: false, msg: "Wind exceeds C42 limits (>20 kt)" };
+      if (gusts > 20) return { safe: false, msg: "Gust exceeds C42 limits (>20 kt)" };
+      if (vis < 5000) return { safe: false, msg: "Visibility too low (<5000 m)" };
+      const descLower = desc.toLowerCase();
+      if (descLower.includes("fog") || descLower.includes("mist")) {
+        return { safe: false, msg: "Fog or mist present — not suitable" };
+      }
+      if (cloudBase < 1000) return { safe: false, msg: "Estimated cloud base below 1000 ft AGL" };
+      if (crosswind > C42_MAX_CROSSWIND) return { safe: false, msg: `Crosswind exceeds C42 limit (${C42_MAX_CROSSWIND} kt)` };
+      return { safe: true, msg: "" };
+    }
+    // Icing risk
+    function icingRisk(temp, dewPoint) {
+      if (temp <= 5 && temp >= -5 && Math.abs(temp - dewPoint) < 2) return "Risk";
+      return "Low";
+    }
+    // Wind shear risk
+    function shearRisk(windKts, gustKts) {
+      const diff = gustKts - windKts;
+      if (diff >= 15) return { level: "High", class: "bad" };
+      if (diff >= 10) return { level: "Moderate", class: "warn" };
+      if (diff >= 5)  return { level: "Low", class: "ok" };
+      return { level: "None", class: "" };
+    }
+    // Turbulence risk
+    function turbulenceRisk(gustKts) {
+      if (gustKts >= 25) return { level: "High", class: "bad" };
+      if (gustKts >= 20) return { level: "Moderate", class: "warn" };
+      if (gustKts >= 15) return { level: "Low", class: "ok" };
+      return { level: "None", class: "" };
+    }
+    // Calculate sunrise/sunset from NOAA API
+    async function getSunTimes(date) {
+      const dateStr = date.toISOString().split('T')[0];
+      const res = await fetch(`https://api.sunrise-sunset.org/json?lat=${LAT}&lng=${LON}&date=${dateStr}&formatted=0`);
+      const data = await res.json();
+      return {
+        sunrise: new Date(data.results.sunrise),
+        sunset: new Date(data.results.sunset),
+      };
+    }
+
+    // Fetch METAR and TAF from AVWX API
+    async function getAVWXData() {
+      try {
+        // Use free demo key - limited usage
+        const metarRes = await fetch(`https://avwx.rest/api/metar/EGFH?token=${AVWX_API_KEY}`);
+        const tafRes = await fetch(`https://avwx.rest/api/taf/EGFH?token=${AVWX_API_KEY}`);
+        const metar = await metarRes.json();
+        const taf = await tafRes.json();
+        return { metar, taf };
+      } catch {
+        return { metar: null, taf: null };
+      }
+    }
+
+    // Initialize Leaflet map
+    const map = L.map('map').setView([LAT, LON], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 13,
+      attribution: '© OpenStreetMap contributors',
+    }).addTo(map);
+    let cloudLayer, rainLayer, windLayer;
+
+    // Overlays for weather from OpenWeatherMap
+    function addWeatherLayers() {
+      if (cloudLayer) map.removeLayer(cloudLayer);
+      if (rainLayer) map.removeLayer(rainLayer);
+      if (windLayer) map.removeLayer(windLayer);
+
+      cloudLayer = L.tileLayer(`https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${API_KEY}`, {opacity:0.4});
+      rainLayer = L.tileLayer(`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${API_KEY}`, {opacity:0.4});
+      windLayer = L.tileLayer(`https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${API_KEY}`, {opacity:0.4});
+
+      cloudLayer.addTo(map);
+      rainLayer.addTo(map);
+      windLayer.addTo(map);
+    }
+
+    // Main check function
+    async function checkFlight() {
+      const startInput = document.getElementById('start').value;
+      const duration = parseFloat(document.getElementById('duration').value);
+      const resDiv = document.getElementById('results');
+      if (!startInput || isNaN(duration) || duration <= 0) {
+        resDiv.innerHTML = '<p class="bad">Please enter a valid start time and duration.</p>';
+        return;
+      }
+      const startTime = new Date(startInput + 'Z');
+      const now = new Date();
+      const maxForecastTime = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000);
+      const endTime = new Date(startTime.getTime() + duration * 3600 * 1000);
+      if (startTime <= now || startTime > maxForecastTime || endTime > maxForecastTime) {
+        resDiv.innerHTML = '<p class="bad">Please enter a valid start time and duration within the next 5 days.</p>';
+        return;
+      }
+      resDiv.innerHTML = '<p>Loading weather data...</p>';
+
+      // Get sunrise/sunset
+      const sunTimes = await getSunTimes(startTime);
+
+      try {
+        // Fetch OpenWeatherMap forecast
+        const response = await fetch(
+          `https://api.openweathermap.org/data/2.5/forecast?lat=${LAT}&lon=${LON}&appid=${API_KEY}&units=metric`
+        );
+        const data = await response.json();
+
+        // Fetch METAR/TAF
+        const { metar, taf } = await getAVWXData();
+
+        // Find forecast interval at/just before start
+        let previousInterval = null;
+        for (let i = data.list.length - 1; i >= 0; i--) {
+          const forecastStart = new Date(data.list[i].dt * 1000);
+          if (forecastStart <= startTime) {
+            previousInterval = data.list[i];
+            break;
+          }
+        }
+        if (!previousInterval) {
+          for (const item of data.list) {
+            const forecastStart = new Date(item.dt * 1000);
+            if (forecastStart > startTime) {
+              previousInterval = item;
+              break;
+            }
+          }
+        }
+        if (!previousInterval) {
+          resDiv.innerHTML = '<p class="bad">No forecast data available for selected flight window.</p>';
+          return;
+        }
+
+        // Collect relevant forecasts within flight window
+        const relevantForecasts = [previousInterval];
+        data.list.forEach(item => {
+          const forecastStart = new Date(item.dt * 1000);
+          if (forecastStart > previousInterval.dt * 1000 && forecastStart < endTime) {
+            relevantForecasts.push(item);
+          }
+        });
+
+        let messages = [];
+
+        for (const item of relevantForecasts) {
+          const main = item.main || {};
+          const wind = item.wind || {};
+          const weather = item.weather?.[0] || {};
+          const clouds = item.clouds || {};
+          const visibilityMeters = 10000; // OpenWeatherMap doesn't provide visibility in forecast
+          // Estimate dewpoint
+          const dewPoint = estimateDewPoint(main.temp, main.humidity);
+          const cloudBase = estimateCloudBase(main.temp, dewPoint);
+
+          // Calculate runway & wind components
+          const runway = predictRunway(wind.deg || 0);
+          const runwayDir = parseInt(runway, 10) * 10;
+          const wc = windComponents(wind.deg || 0, wind.speed || 0, runwayDir);
+
+          // Ceiling & visibility category
+          const ceilCat = ceilingCategory(cloudBase);
+          const visCat = visibilityCategory(visibilityMeters);
+
+          // Check safe limits
+          const safeCheck = checkLimits(
+            wind.speed || 0,
+            wind.gust || 0,
+            visibilityMeters,
+            weather.description || '',
+            clouds.all || 0,
+            cloudBase,
+            wc.crosswind
+          );
+
+          // Icing, shear, turbulence risks
+          const icing = icingRisk(main.temp || 15, dewPoint);
+          const shear = shearRisk(wind.speed || 0, wind.gust || 0);
+          const turbulence = turbulenceRisk(wind.gust || 0);
+
+          // Sunrise/sunset warning
+          let daylightStatus = 'Daylight OK';
+          if (startTime < sunTimes.sunrise) daylightStatus = 'Before Sunrise';
+          if (startTime > sunTimes.sunset) daylightStatus = 'After Sunset';
+
+          // Compose messages
+          messages.push(
+            `Forecast for ${formatUKDate(new Date(item.dt * 1000))}:\n` +
+            `Temp: ${main.temp.toFixed(1)} °C, Dew Point: ${dewPoint.toFixed(1)} °C\n` +
+            `Wind: ${wind.speed.toFixed(1)} kt at ${wind.deg || 0}°, Runway ${runway} (${runwayDir}°)\n` +
+            `Headwind: ${wc.headwind} kt, Crosswind: ${wc.crosswind} kt ${wc.crosswind > C42_MAX_CROSSWIND ? '(EXCEEDS LIMIT!)' : ''}\n` +
+            `Cloud Cover: ${clouds.all}% (${ceilCat})\n` +
+            `Visibility: ${visibilityMeters} m (${visCat})\n` +
+            `Icing Risk: ${icing}\n` +
+            `Shear Risk: %c${shear.level}%c\n` +
+            `Turbulence Risk: %c${turbulence.level}%c\n` +
+            `Daylight Status: ${daylightStatus}\n` +
+            `Flight Safe: ${safeCheck.safe ? '%cYES%c' : '%cNO%c'}${safeCheck.msg ? ' - ' + safeCheck.msg : ''}\n` +
+            (metar?.raw ? `Latest METAR: ${metar.raw}\n` : '') +
+            (taf?.raw ? `Latest TAF: ${taf.raw}\n` : '')
+          );
+        }
+
+        // Display results
+        resDiv.innerHTML = '';
+        for (const item of relevantForecasts) {
+          const main = item.main || {};
+          const wind = item.wind || {};
+          const weather = item.weather?.[0] || {};
+          const clouds = item.clouds || {};
+          const dewPoint = estimateDewPoint(main.temp, main.humidity);
+          const cloudBase = estimateCloudBase(main.temp, dewPoint);
+          const runway = predictRunway(wind.deg || 0);
+          const runwayDir = parseInt(runway, 10) * 10;
+          const wc = windComponents(wind.deg || 0, wind.speed || 0, runwayDir);
+          const ceilCat = ceilingCategory(cloudBase);
+          const visCat = visibilityCategory(10000);
+          const safeCheck = checkLimits(
+            wind.speed || 0,
+            wind.gust || 0,
+            10000,
+            weather.description || '',
+            clouds.all || 0,
+            cloudBase,
+            wc.crosswind
+          );
+
+          const dayStatus = startTime < sunTimes.sunrise
+            ? 'Before Sunrise'
+            : startTime > sunTimes.sunset
+            ? 'After Sunset'
+            : 'Daylight OK';
+
+          resDiv.innerHTML +=
+            `<strong>Forecast for ${formatUKDate(new Date(item.dt * 1000))}:</strong>\n` +
+            `Temperature: ${main.temp.toFixed(1)} °C\n` +
+            `Dew Point: ${dewPoint.toFixed(1)} °C\n` +
+            `Wind: ${wind.speed.toFixed(1)} kt at ${wind.deg || 0}°\n` +
+            `Predicted Runway: <strong>${runway}</strong> (${runwayDir}°)\n` +
+            `Headwind: ${wc.headwind} kt, Crosswind: ` +
+            (wc.crosswind > C42_MAX_CROSSWIND
+              ? `<span class="bad">${wc.crosswind} kt (EXCEEDS LIMIT!)</span>`
+              : `<span class="ok">${wc.crosswind} kt</span>`) +
+            `\nCloud Cover: ${clouds.all}% (<span class="${ceilCat}">${ceilCat}</span>)\n` +
+            `Visibility: 10,000 m (<span class="${visCat}">${visCat}</span>)\n` +
+            `Icing Risk: ${icing}\n` +
+            `Shear Risk: <span class="${shear.class}">${shear.level}</span>\n` +
+            `Turbulence Risk: <span class="${turbulence.class}">${turbulence.level}</span>\n` +
+            `Daylight Status: ${dayStatus}\n` +
+            `Flight Safe: ` +
+            (safeCheck.safe
+              ? `<span class="ok">YES</span>`
+              : `<span class="bad">NO - ${safeCheck.msg}</span>`) +
+            `\n\n`;
+        }
+        addWeatherLayers();
+      } catch (err) {
+        resDiv.innerHTML = '<p class="bad">Error fetching weather data. Try again later.</p>';
+        console.error(err);
+      }
+    }
+
+    // Event listeners
+    document.getElementById('start').addEventListener('change', checkFlight);
+    document.getElementById('duration').addEventListener('input', checkFlight);
+  </script>
+</body>
+</html>
