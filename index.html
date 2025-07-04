@@ -12,11 +12,11 @@
       padding: 20px;
       background: #f5f5f5;
       color: #333;
-      transition: background-color 0.3s, color 0.3s;
+      transition: background 0.3s, color 0.3s;
     }
     body.dark-mode {
       background: #121212;
-      color: #ddd;
+      color: #eee;
     }
     input {
       padding: 10px;
@@ -24,15 +24,14 @@
       width: 100%;
       font-size: 1rem;
       background: #fff;
-      color: #000;
       border: 1px solid #ccc;
-      border-radius: 3px;
-      transition: background-color 0.3s, color 0.3s;
+      color: #333;
+      transition: background 0.3s, color 0.3s;
     }
     body.dark-mode input {
-      background: #222;
-      color: #ddd;
+      background: #333;
       border-color: #555;
+      color: #eee;
     }
     #results {
       margin-top: 20px;
@@ -41,11 +40,11 @@
       border-radius: 5px;
       white-space: pre-wrap;
       font-weight: normal;
-      transition: background-color 0.3s, color 0.3s;
+      transition: background 0.3s, color 0.3s;
     }
     body.dark-mode #results {
-      background: #1e1e1e;
-      color: #ddd;
+      background: #222;
+      color: #eee;
     }
     .ok { color: green; }
     .bad { color: red; }
@@ -62,33 +61,27 @@
       transition: color 0.3s;
     }
     body.dark-mode footer {
-      color: #999;
+      color: #aaa;
     }
     #toggle-theme {
-      margin-bottom: 20px;
-      padding: 8px 15px;
-      font-size: 1rem;
+      margin-bottom: 15px;
+      padding: 5px 10px;
+      font-size: 0.8rem;
       cursor: pointer;
+      background: #ddd;
       border: none;
       border-radius: 4px;
-      background-color: #007bff;
-      color: white;
-      transition: background-color 0.3s;
-    }
-    #toggle-theme:hover {
-      background-color: #0056b3;
+      transition: background 0.3s, color 0.3s;
     }
     body.dark-mode #toggle-theme {
-      background-color: #3399ff;
-    }
-    body.dark-mode #toggle-theme:hover {
-      background-color: #66b3ff;
+      background: #444;
+      color: #eee;
     }
   </style>
 </head>
 <body>
   <h1>C42 Flight Buddy</h1>
-  <button id="toggle-theme">Switch to Dark Mode</button>
+  <button id="toggle-theme">Dark Mode</button>
   <p><em>Version: 2.0</em></p>
   <p>Check flight weather at Swansea Airport</p>
 
@@ -326,7 +319,8 @@ ${highlight("Status: ", safe.safe ? "✅ OK" : "❌ Limit Exceeded", !safe.safe)
     resDiv.innerHTML = 
       `<h3>Flight Weather Check for ${formatUKDate(startTime)} to ${formatUKDate(endTime)}</h3>
       <pre>${messages.join("\n")}</pre>
-      ${overallStatus}`;
+      ${overallStatus}`
+    ;
 
   } catch (e) {
     resDiv.innerHTML = '<p class="bad">Error fetching weather data.</p>';
@@ -341,20 +335,33 @@ window.addEventListener('load', () => {
   document.getElementById("start").value = isoString;
   document.getElementById("duration").value = 1;
   checkFlight();
+
+  // Theme toggle button
+  const toggleBtn = document.getElementById('toggle-theme');
+  const body = document.body;
+
+  // Load saved theme
+  const savedTheme = localStorage.getItem('theme');
+  if (savedTheme === 'dark') {
+    body.classList.add('dark-mode');
+    toggleBtn.textContent = 'Light Mode';
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    if (body.classList.contains('dark-mode')) {
+      body.classList.remove('dark-mode');
+      toggleBtn.textContent = 'Dark Mode';
+      localStorage.setItem('theme', 'light');
+    } else {
+      body.classList.add('dark-mode');
+      toggleBtn.textContent = 'Light Mode';
+      localStorage.setItem('theme', 'dark');
+    }
+  });
 });
 
 document.getElementById("start").addEventListener("change", checkFlight);
 document.getElementById("duration").addEventListener("input", checkFlight);
-
-const toggleBtn = document.getElementById('toggle-theme');
-toggleBtn.addEventListener('click', () => {
-  document.body.classList.toggle('dark-mode');
-  if(document.body.classList.contains('dark-mode')) {
-    toggleBtn.textContent = 'Switch to Light Mode';
-  } else {
-    toggleBtn.textContent = 'Switch to Dark Mode';
-  }
-});
 </script>
 </body>
 </html>
