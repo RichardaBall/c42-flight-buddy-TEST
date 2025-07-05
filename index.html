@@ -1,128 +1,367 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>C42 Flight Buddy v2.1</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>C42 Flight Buddy</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width:600px; margin:auto; padding:20px;
-      background:#f5f5f5; color:#333; transition:.3s; }
-    body.dark-mode { background:#121212; color:#eee; }
-    input { width:100%; padding:10px; font-size:1rem; margin:5px 0; background:#fff;
-      border:1px solid #ccc; color:#333; transition:.3s; }
-    body.dark-mode input { background:#333; border-color:#555; color:#eee; }
-    #results { background:#fff; padding:15px; border-radius:5px; white-space:pre-wrap;
-      margin-top:20px; transition:.3s; }
-    body.dark-mode #results { background:#222; color:#eee; }
-    .ok { color:green; } .bad { color:red; } .warn { color:orange; }
-    .highlight { font-weight:bold; }
-    footer { text-align:center; font-size:.9rem; color:#666; margin-top:40px;
-      transition:.3s; }
-    body.dark-mode footer { color:#aaa; }
-    #toggle-theme { padding:5px 10px; font-size:.8rem; margin-bottom:15px;
-      background:#ddd; border:none; border-radius:4px; cursor:pointer;
-      transition:.3s; }
-    body.dark-mode #toggle-theme { background:#444; color:#eee; }
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: auto;
+      padding: 20px;
+      background: #f5f5f5;
+      color: #333;
+      transition: background 0.3s, color 0.3s;
+    }
+    body.dark-mode {
+      background: #121212;
+      color: #eee;
+    }
+    input {
+      padding: 10px;
+      margin: 5px 0;
+      width: 100%;
+      font-size: 1rem;
+      background: #fff;
+      border: 1px solid #ccc;
+      color: #333;
+      transition: background 0.3s, color 0.3s;
+    }
+    body.dark-mode input {
+      background: #333;
+      border-color: #555;
+      color: #eee;
+    }
+    #results {
+      margin-top: 20px;
+      padding: 15px;
+      background: #fff;
+      border-radius: 5px;
+      white-space: pre-wrap;
+      font-weight: normal;
+      transition: background 0.3s, color 0.3s;
+    }
+    body.dark-mode #results {
+      background: #222;
+      color: #eee;
+    }
+    .ok { color: green; }
+    .bad { color: red; }
+    .warn { color: orange; }
+    .green { color: green; }
+    .amber { color: orange; }
+    .red { color: red; }
+    .highlight { font-weight: normal; }
+    footer {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #666;
+      transition: color 0.3s;
+    }
+    body.dark-mode footer {
+      color: #aaa;
+    }
+    #toggle-theme {
+      margin-bottom: 15px;
+      padding: 5px 10px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      background: #ddd;
+      border: none;
+      border-radius: 4px;
+      transition: background 0.3s, color 0.3s;
+    }
+    body.dark-mode #toggle-theme {
+      background: #444;
+      color: #eee;
+    }
   </style>
 </head>
 <body>
   <h1>C42 Flight Buddy</h1>
   <button id="toggle-theme">Dark Mode</button>
-  <p><em>Version: 2.1</em></p>
+  <p><em>Version: 2.0</em></p>
   <p>Check flight weather at Swansea Airport</p>
+
   <label for="start">Flight Start (GMT):</label>
-  <input type="datetime-local" id="start">
+  <input type="datetime-local" id="start" />
+
   <label for="duration">Flight Duration (hours):</label>
-  <input type="number" id="duration" min="0.5" step="0.5" value="1">
+  <input type="number" id="duration" min="0.5" step="0.5" value="1" />
+
   <div id="results"></div>
-  <footer>&copy; 2025 Richard Ball.</footer>
 
-  <script>
-    const LAT=51.605, LON=-4.064, API_KEY='81a0d8bef1288c6437560f89b336dd33';
-    const elevation=295;
+  <footer>
+    &copy; 2025 Richard Ball. All rights reserved.
+  </footer>
 
-    function estimateDewPoint(t,h) { return t - ((100 - h) / 5); }
-    function estimateCloudBase(t,dp) { return Math.round((t - dp) * 400); }
-    function highlight(l,v,cond,cls='bad') { return cond ? `${l}<span class="${cls} highlight">${v}</span>` : l+v; }
-    function predictRunway(dir) {
-      const r={'04':40,'22':220,'10':100,'28':280};
-      return Object.entries(r).reduce((a,b)=> {
-        const da=Math.min(Math.abs(a[1]-dir),360-Math.abs(a[1]-dir));
-        const db=Math.min(Math.abs(b[1]-dir),360-Math.abs(b[1]-dir));
-        return da<db?a:b;
-      })[0];
+<script>
+const LAT = 51.605;
+const LON = -4.064;
+const API_KEY = '81a0d8bef1288c6437560f89b336dd33';
+const elevation = 295;
+
+function estimateDewPoint(temp, humidity) {
+  return temp - ((100 - humidity) / 5);
+}
+
+function estimateCloudBase(temp, dewPoint) {
+  return Math.round((temp - dewPoint) * 400);
+}
+
+function highlight(label, value, condition, cls="bad") {
+  if (!condition) return label + value;
+  return ${label}<span class="${cls} highlight">${value}</span>;
+}
+
+function predictRunway(windDir) {
+  const runways = { '04': 40, '22': 220, '10': 100, '28': 280 };
+  return Object.entries(runways).reduce((a, b) => {
+    const aDiff = Math.min(Math.abs(a[1] - windDir), 360 - Math.abs(a[1] - windDir));
+    const bDiff = Math.min(Math.abs(b[1] - windDir), 360 - Math.abs(b[1] - windDir));
+    return aDiff < bDiff ? a : b;
+  })[0];
+}
+
+function checkLimits(wind, gusts, vis, desc, cloudCover, cloudBase) {
+  if (parseFloat(wind) > 20) return { safe: false, msg: "Wind exceeds C42 limits (>20 kt)" };
+  if (parseFloat(gusts) > 20) return { safe: false, msg: "Gust exceeds C42 limits (>20 kt)" };
+  if (vis < 5000) return { safe: false, msg: "Visibility too low (<5000 m)" };
+  const descLower = desc.toLowerCase();
+  if (descLower.includes("fog") || descLower.includes("mist")) {
+    return { safe: false, msg: "Fog or mist present — not suitable" };
+  }
+  if (cloudBase < 1000) return { safe: false, msg: "Estimated cloud base below 1000 ft AGL" };
+  return { safe: true, msg: "" };
+}
+
+function icingRisk(temp, dewPoint) {
+  if (temp <= 5 && temp >= -5 && Math.abs(temp - dewPoint) < 2) return "Risk";
+  return "Low";
+}
+
+function shearRisk(windKts, gustKts) {
+  const diff = gustKts - windKts;
+  if (diff >= 15) return { level: "High", class: "red" };
+  if (diff >= 10) return { level: "Moderate", class: "amber" };
+  if (diff >= 5)  return { level: "Low", class: "green" };
+  return { level: "None", class: "" };
+}
+
+function turbulenceRisk(gustKts) {
+  if (gustKts >= 25) return { level: "High", class: "red" };
+  if (gustKts >= 20) return { level: "Moderate", class: "amber" };
+  if (gustKts >= 15) return { level: "Low", class: "green" };
+  return { level: "None", class: "" };
+}
+
+function formatUKDate(d) {
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return ${days[d.getUTCDay()]}, ${String(d.getUTCDate()).padStart(2,'0')} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')} GMT;
+}
+
+async function checkFlight() {
+  const startInput = document.getElementById("start").value;
+  const duration = parseFloat(document.getElementById("duration").value);
+  const resDiv = document.getElementById("results");
+
+  if (!startInput || isNaN(duration) || duration <= 0) {
+    resDiv.innerHTML = '<p class="bad">Please enter a valid start time and duration.</p>';
+    return;
+  }
+
+  const startTime = new Date(startInput + "Z");
+  const now = new Date();
+  const maxForecastTime = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000);
+  const endTime = new Date(startTime.getTime() + duration * 3600 * 1000);
+
+  if (startTime <= now || startTime > maxForecastTime || endTime > maxForecastTime) {
+    resDiv.innerHTML = '<p class="bad">Please enter a valid start time and duration within the next 5 days.</p>';
+    return;
+  }
+
+  resDiv.innerHTML = '<p>Loading weather data...</p>';
+
+  try {
+    const response = await fetch(https://api.openweathermap.org/data/2.5/forecast?lat=${LAT}&lon=${LON}&appid=${API_KEY}&units=metric);
+    const data = await response.json();
+
+    let previousInterval = null;
+    for (let i = data.list.length - 1; i >= 0; i--) {
+      const forecastStart = new Date(data.list[i].dt * 1000);
+      if (forecastStart <= startTime) {
+        previousInterval = data.list[i];
+        break;
+      }
     }
-    function shearRisk(w,k){const d=k-w;return d>=15?{level:"High",class:"bad"}:d>=10?{level:"Moderate",class:"warn"}:d>=5?{level:"Low",class:"ok"}:{level:"None",class:""};}
-    function turbulenceRisk(k){return k>=25?{level:"High",class:"bad"}:k>=20?{level:"Moderate",class:"warn"}:k>=15?{level:"Low",class:"ok"}:{level:"None",class:""};}
-
-    function formatUKDate(d){return d.toUTCString().replace('GMT','GMT');}
-
-    async function fetchVisibility() {
-      const r=await fetch('https://tides4fishing.com/uk/wales/swansea/forecast/visibility');
-      const t=await r.text();
-      const m=t.match(/Today[\s\S]*?Visibility in Swansea.*?(\d+)\s?km/);
-      return m?parseInt(m[1])*1000:10000;
-    }
-
-    async function checkFlight(){
-      const startI=document.getElementById('start').value;
-      const dur=parseFloat(document.getElementById('duration').value);
-      const res=document.getElementById('results');
-      if(!startI||isNaN(dur)||dur<=0){res.innerHTML='<p class="bad">Enter valid start & duration.</p>';return;}
-      res.innerHTML='<p>Loading...</p>';
-      try {
-        const [vis, resp]=await Promise.all([fetchVisibility(),
-          fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${LAT}&lon=${LON}&appid=${API_KEY}&units=metric`).then(r=>r.json())]);
-        const data=resp.list;
-        const startT=new Date(startI+'Z');
-        const endT=new Date(startT.getTime()+dur*3600*1000);
-        let pi=data.find(f=>new Date(f.dt*1000)>startT)||data[data.length-1];
-        const segs=data.filter(f=>new Date(f.dt*1000)>=pi.dt*1000 && new Date(f.dt*1000)<endT);
-        segs.unshift(pi);
-        let msg='';
-        for(const it of segs){
-          const w=it.wind,m=it.main,c=it.clouds,wd=it.weather[0];
-          const dp=estimateDewPoint(m.temp,m.humidity), cb=estimateCloudBase(m.temp,dp);
-          const windK=(w.speed*1.94384).toFixed(1), gustK=(w.gust? w.gust*1.94384:0).toFixed(1);
-          const run = predictRunway(w.deg||0);
-          const shear=shearRisk(+windK,+gustK), turb=turbulenceRisk(+gustK);
-          msg+=`Time: ${formatUKDate(new Date(it.dt*1000))}\n`;
-          msg+=`Temp: ${m.temp.toFixed(1)}°C, DewPt: ${dp.toFixed(1)}°C\n`;
-          msg+=highlight('Wind: ',`${w.deg}° @ ${windK} kt`, windK>20)+'\n';
-          msg+=highlight('Gusts: ',`${gustK} kt`, gustK>20)+'\n';
-          msg+=`Visibility: ${vis>=5000?'>=':''}${vis} m\n`;
-          msg+=`Cloud Base: ${cb} ft\n`;
-          msg+=`Predicted Runway: ${run}\n`;
-          msg+=`Shear Risk: ${shear.level}\n`;
-          msg+=`Turbulence Risk: ${turb.level}\n\n`;
+    if (!previousInterval) {
+      for (let item of data.list) {
+        const forecastStart = new Date(item.dt * 1000);
+        if (forecastStart > startTime) {
+          previousInterval = item;
+          break;
         }
-        res.innerHTML=`<pre>${msg}</pre>`;
-      } catch(e){
-        console.error(e);
-        res.innerHTML='<p class="bad">Error loading data.</p>';
       }
     }
 
-    window.addEventListener('load',()=>{
-      const now=new Date();
-      now.setUTCMinutes(0,0,0);
-      now.setUTCHours(now.getUTCHours()+1);
-      document.getElementById('start').value=now.toISOString().slice(0,16);
-      document.getElementById('duration').value=1;
-      checkFlight();
-      const btn=document.getElementById('toggle-theme'), b= document.body;
-      if(localStorage.getItem('theme')==='dark'){
-        b.classList.add('dark-mode');
-        btn.textContent='Light Mode';
+    if (!previousInterval) {
+      resDiv.innerHTML = '<p class="bad">No forecast data available for selected flight window.</p>';
+      return;
+    }
+
+    let relevantForecasts = [previousInterval];
+    data.list.forEach(item => {
+      const forecastStart = new Date(item.dt * 1000);
+      if (forecastStart > previousInterval.dt * 1000 && forecastStart < endTime) {
+        relevantForecasts.push(item);
       }
-      btn.addEventListener('click',()=>{
-        const dark=b.classList.toggle('dark-mode');
-        btn.textContent=dark?'Light Mode':'Dark Mode';
-        localStorage.setItem('theme',dark?'dark':'light');
-      });
     });
-    document.getElementById('start').addEventListener('change',checkFlight);
-    document.getElementById('duration').addEventListener('input',checkFlight);
-  </script>
+
+    let messages = [];
+
+    relevantForecasts.forEach(item => {
+      const main = item.main || {};
+      const wind = item.wind || {};
+      const weatherArr = item.weather || [];
+      const clouds = item.clouds || {};
+      const pressure = main.pressure || 0;
+      const humidity = main.humidity || 0;
+      const temp = main.temp || 0;
+      const windDeg = wind.deg || 0;
+      const windSpeed = wind.speed || 0;
+      const gustSpeed = wind.gust || 0;
+      const visibility = item.visibility !== undefined ? item.visibility : 10000;
+      const cloudCover = clouds.all || 0;
+      const weatherDesc = weatherArr.length ? weatherArr[0].description : "unknown";
+
+      const dewPoint = estimateDewPoint(temp, humidity);
+      const cloudBase = estimateCloudBase(temp, dewPoint);
+      const windKts = +(windSpeed * 1.94384).toFixed(1);
+      const gustKts = +(gustSpeed * 1.94384).toFixed(1);
+      const QFE = (pressure - (elevation * 0.12)).toFixed(1);
+      const runway = predictRunway(windDeg);
+      const safe = checkLimits(windKts, gustKts, visibility, weatherDesc, cloudCover, cloudBase);
+      const icing = icingRisk(temp, dewPoint);
+      const shear = shearRisk(windKts, gustKts);
+      const turb = turbulenceRisk(gustKts);
+
+      let visClass = "";
+      if (visibility < 3000) visClass = "bad";
+      else if (visibility < 5000) visClass = "warn";
+
+      const visDisplay = visibility > 5000 ? '>5000 m' : <span class="${visClass} highlight">${visibility} m</span>;
+
+      const rainLevel = (() => {
+        const descLower = weatherDesc.toLowerCase();
+        if (!descLower.includes('rain')) return 'none';
+        if (descLower.includes('light') && cloudCover < 99) return 'warn';
+        return 'bad';
+      })();
+      const rainClass = rainLevel === 'bad' ? 'bad' : rainLevel === 'warn' ? 'warn' : '';
+
+      messages.push(
+Time: ${formatUKDate(new Date(item.dt * 1000))}
+Temperature: ${temp.toFixed(1)}°C
+${highlight("Cloud base: ~", cloudBase + " ft AGL", cloudBase < 1000, "bad")}
+QNH: ${pressure} hPa
+QFE: ${QFE} hPa
+${highlight("Wind: ", windDeg + "° @ " + windKts + " kt", windKts > 20)}
+${highlight("Gusts: ", gustKts + " kt", gustKts > 20)}
+Visibility: ${visDisplay}
+Cloud cover: ${cloudCover} %
+Weather: <span class="${rainClass} highlight">${weatherDesc}</span>
+Icing Risk: ${icing === 'Risk' ? <span class="bad highlight">${icing}</span> : icing}
+Wind Shear Risk: <span class="${shear.class}">${shear.level}</span>
+Turbulence Risk: <span class="${turb.class}">${turb.level}</span>
+Predicted Runway: ${runway}
+${highlight("Status: ", safe.safe ? "✅ OK" : "❌ Limit Exceeded", !safe.safe)}\n
+      );
+    });
+
+    const anyBad = relevantForecasts.some(item => {
+      const main = item.main || {};
+      const wind = item.wind || {};
+      const weatherArr = item.weather || [];
+      const clouds = item.clouds || {};
+      const pressure = main.pressure || 0;
+      const humidity = main.humidity || 0;
+      const temp = main.temp || 0;
+      const windSpeed = wind.speed || 0;
+      const gustSpeed = wind.gust || 0;
+      const visibility = item.visibility !== undefined ? item.visibility : 10000;
+      const cloudCover = clouds.all || 0;
+      const weatherDesc = weatherArr.length ? weatherArr[0].description : "unknown";
+
+      const dewPoint = estimateDewPoint(temp, humidity);
+      const cloudBase = estimateCloudBase(temp, dewPoint);
+      const windKts = (windSpeed * 1.94384).toFixed(1);
+      const gustKts = (gustSpeed * 1.94384).toFixed(1);
+      const safe = checkLimits(windKts, gustKts, visibility, weatherDesc, cloudCover, cloudBase);
+
+      const rainLevel = (() => {
+        const descLower = weatherDesc.toLowerCase();
+        if (!descLower.includes('rain')) return 'none';
+        if (descLower.includes('light') && cloudCover < 99) return 'warn';
+        return 'bad';
+      })();
+
+      if (!safe.safe || rainLevel === 'bad') return true;
+      return false;
+    });
+
+    const overallStatus = anyBad
+      ? '<p class="bad"><strong>❌ Weather issues detected during flight.</strong></p>'
+      : '<p class="ok"><strong>✅ Weather suitable for full flight duration.</strong></p>';
+
+    resDiv.innerHTML = 
+      <h3>Flight Weather Check for ${formatUKDate(startTime)} to ${formatUKDate(endTime)}</h3>
+      <pre>${messages.join("\n")}</pre>
+      ${overallStatus}
+    ;
+
+  } catch (e) {
+    resDiv.innerHTML = '<p class="bad">Error fetching weather data.</p>';
+  }
+}
+
+window.addEventListener('load', () => {
+  const now = new Date();
+  now.setUTCMinutes(0,0,0);
+  now.setUTCHours(now.getUTCHours() + 1);
+  const isoString = now.toISOString().slice(0,16);
+  document.getElementById("start").value = isoString;
+  document.getElementById("duration").value = 1;
+  checkFlight();
+
+  // Theme toggle button
+  const toggleBtn = document.getElementById('toggle-theme');
+  const body = document.body;
+
+  // Load saved theme
+  const savedTheme = localStorage.getItem('theme');
+  if (savedTheme === 'dark') {
+    body.classList.add('dark-mode');
+    toggleBtn.textContent = 'Light Mode';
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    if (body.classList.contains('dark-mode')) {
+      body.classList.remove('dark-mode');
+      toggleBtn.textContent = 'Dark Mode';
+      localStorage.setItem('theme', 'light');
+    } else {
+      body.classList.add('dark-mode');
+      toggleBtn.textContent = 'Light Mode';
+      localStorage.setItem('theme', 'dark');
+    }
+  });
+});
+
+document.getElementById("start").addEventListener("change", checkFlight);
+document.getElementById("duration").addEventListener("input", checkFlight);
+</script>
 </body>
 </html>
